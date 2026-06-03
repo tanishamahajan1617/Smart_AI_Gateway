@@ -1,0 +1,30 @@
+data/
+# 1. Virtual Environment Foolder
+env/
+.venv/
+venv/
+ENV/
+
+# 2. Python temporary aur cache files 
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# 3. Environment Variables Files 
+.env
+.env.local
+.env.*
+*.env
+
+# 4. Local Data Folder
+data/
+
+# 5. IDE aur System files 
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
