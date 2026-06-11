@@ -22,7 +22,14 @@ __pycache__/
 # 4. Local Data Folder
 data/
 
-# 5. IDE aur System files 
+#5. Logs aur Reports
+logs/
+core/
+
+#database
+*.db
+
+# 6. IDE aur System files 
 
 .vscode/
 .idea/

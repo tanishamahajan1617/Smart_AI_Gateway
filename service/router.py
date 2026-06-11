@@ -1,25 +1,40 @@
-def select_best_key(keys, required_tokens, query_type):
-    valid_keys = []
+def select_best_key(keys, classification):
+    has_priority = any(k.priority is not None for k in keys)
 
-    for k in keys:
-        remaining = k["limit"] - k["used_tokens"]
-        priority = k.get("priority", 3)
+    modality = classification["modality"]
+    complexity = classification["complexity"]
 
-        if remaining >= required_tokens:
-            valid_keys.append({
-                "key": k,
-                "remaining": remaining,
-                "priority": priority
-            })
+    # Step 1: Filter by modality (future-ready)
+    if modality == "image":
+        keys = [k for k in keys if "vision" in k.provider.lower() or "gpt" in k.provider.lower()]
 
-    if not valid_keys:
-        return None
+    elif modality == "document":
+        # you can later prefer doc-capable models
+        pass
 
-    valid_keys.sort(
-        key=lambda x: (
-            x["priority"],
-            -x["remaining"]
+    # Step 2: Apply routing strategy
+
+    if has_priority:
+        #  USER-CONTROLLED MODE
+        sorted_keys = sorted(
+            keys,
+            key=lambda k: (
+                -(k.priority or 0),
+                k.used_tokens
+            )
         )
-    )
 
-    return valid_keys[0]["key"]
+    else:
+        #  SYSTEM-CONTROLLED MODE
+
+        if complexity == "simple":
+            # cheap first
+            sorted_keys = sorted(keys, key=lambda k: k.used_tokens)
+        else:
+            # strong first (fallback to priority if exists)
+            sorted_keys = sorted(
+                keys,
+                key=lambda k: (-(k.priority or 0), k.used_tokens)
+            )
+
+    return sorted_keys[0] if sorted_keys else None

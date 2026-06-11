@@ -1,102 +1,94 @@
-from fastapi import APIRouter, HTTPException, status
-from schema.key_schema import (
-    AddKeyRequest,
-    AddKeyResponse,
-    GetKeysResponse,
-    DeleteKeyResponse,
-    KeyResponse
-)
-from data.store import users
+from fastapi import APIRouter, HTTPException, status, Depends
+from sqlalchemy.orm import Session
+
+from core.database import get_db
+from models.key_model import APIKey   
+from models.user_model import User
+from schema.key_schema import AddKeyRequest, KeyResponse
+from service.auth_utils import get_current_user
 
 router = APIRouter()
 
 
-# 🔹 Add API Key
-@router.post(
-    "/{user_id}/keys",
-    response_model=AddKeyResponse,
-    status_code=status.HTTP_201_CREATED
-)
-def add_key(user_id: str, req: AddKeyRequest):
-    user = users.get(user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+# 🔹 ADD KEY
+@router.post("/keys", response_model=KeyResponse)
+def add_key(
+    req: AddKeyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user_id = current_user.user_id if isinstance(current_user, User) else current_user
+    new_key = APIKey(
+        user_id=user_id,
+        provider=req.provider,
+        api_key=req.api_key,
+        priority=req.priority,
+        limit=req.limit
+    )
 
-    key_id = user["next_key_id"]
+    db.add(new_key)
+    db.commit()
+    db.refresh(new_key)
 
-    key = {
-        "key_id": key_id,
-        "provider": req.provider,
-        "api_key": req.api_key,
-        "used_tokens": 0,
-        "limit": req.limit,
-        "priority": req.priority,
-        "name": req.name
-    }
-
-    user["keys"].append(key)
-    user["next_key_id"] += 1
-
-    return AddKeyResponse(
-        message="Key added successfully",
-        key_id=key_id
+    return KeyResponse(
+        key_id=new_key.key_id,
+        provider=new_key.provider,
+        priority=new_key.priority,
+        used_tokens=new_key.used_tokens,
+        limit=new_key.limit,
+        status=new_key.status
     )
 
 
-# 🔹 Get All Keys
-@router.get(
-    "/{user_id}/keys",
-    response_model=GetKeysResponse,
-    status_code=status.HTTP_200_OK
-)
-def get_keys(user_id: str):
-    user = users.get(user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+# 🔹 GET KEYS
+@router.get("/keys", response_model=list[KeyResponse])
+def get_keys(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if isinstance(current_user, User):
+        keys = current_user.keys
+    else:
+        user = db.query(User).filter(User.user_id == current_user).first()
 
-    keys = [
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        keys = user.keys
+
+    return [
         KeyResponse(
-            key_id=k["key_id"],
-            provider=k["provider"],
-            used_tokens=k["used_tokens"],
-            limit=k["limit"],
-            remaining_tokens=k["limit"] - k["used_tokens"],
-            priority=k.get("priority", 1),
-            name=k.get("name")
+            key_id=k.key_id,
+            provider=k.provider,
+            priority=k.priority,
+            used_tokens=k.used_tokens,
+            limit=k.limit,
+            status=k.status
         )
-        for k in user["keys"]
+        for k in keys
     ]
 
-    return GetKeysResponse(keys=keys)
 
+# 🔹 DELETE KEY
+@router.delete("/keys/{key_id}")
+def delete_key(
+    key_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user_id = current_user.user_id if isinstance(current_user, User) else current_user
+    key = db.query(APIKey).filter(
+        APIKey.key_id == key_id,
+        APIKey.user_id == user_id
+    ).first()
 
-# 🔹 Delete API Key
-@router.delete(
-    "/{user_id}/keys/{key_id}",
-    response_model=DeleteKeyResponse,
-    status_code=status.HTTP_200_OK
-)
-def delete_key(user_id: str, key_id: int):
-    user = users.get(user_id)
-    if not user:
+    if not key:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="Key not found"
         )
 
-    key_exists = any(k["key_id"] == key_id for k in user["keys"])
-    if not key_exists:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="API key not found"
-        )
+    db.delete(key)
+    db.commit()
 
-    user["keys"] = [k for k in user["keys"] if k["key_id"] != key_id]
-
-    return DeleteKeyResponse(message="Key deleted successfully")
+    return {"message": "Key deleted successfully"}

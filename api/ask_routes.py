@@ -1,87 +1,67 @@
-from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
-from schema.ask_schema import AskRequest, AskResponse
-from data.store import users
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy.orm import Session
 
-from service.classifier import classify_query
-from service.token_manager import estimate_tokens
-from service.router import select_best_key
+from core.database import get_db
+from service.auth_utils import get_current_user
 
-router = APIRouter()
+from models.key_model import APIKey
+from models.conversation import Conversation
 
-
-async def extract_file_metadata(file: UploadFile):
-    content = await file.read()
-
-    metadata = {
-        "file_name": file.filename,
-        "file_type": file.content_type,
-        "file_size": len(content)
-    }
-
-    file.file.seek(0)
-    return metadata
+from schema.ask_schema import AskResponse
 
 
-@router.post(
-    "/{user_id}/ask",
-    response_model=AskResponse,
-    status_code=status.HTTP_200_OK
-)
+router = APIRouter(prefix="/ask")
+
+
+@router.post("/", response_model=AskResponse)
 async def ask(
-    user_id: str,
     query: str = Form(...),
-    file: UploadFile = File(None)
+    file: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
 ):
-    # 🔹 1. Validate user
-    user = users.get(user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-
-    # 🔹 2. Handle file
-    file_metadata = {}
-    if file:
-        file_metadata = await extract_file_metadata(file)
-
-    # 🔹 3. Create structured request
-    request_data = AskRequest(
-        user_id=user_id,
-        query=query,
-        file_name=file_metadata.get("file_name"),
-        file_type=file_metadata.get("file_type"),
-        file_size=file_metadata.get("file_size")
-    )
-
-    # 🔹 4. Query classification
-    query_type = classify_query(request_data.query)
-
-    # 🔹 5. Token estimation
-    tokens_needed = estimate_tokens(request_data.query)
-
-    # 🔹 6. Smart routing
-    key = select_best_key(
-        user["keys"],
-        tokens_needed,
-        query_type
-    )
+    # Step 1: Get active API key for logged-in user
+    key = db.query(APIKey).filter(
+        APIKey.user_id == current_user,
+        APIKey.status == "active"
+    ).first()
 
     if not key:
         raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="All API keys exhausted"
+            status_code=400,
+            detail="No active API keys found"
         )
 
-    # 🔹 7. Dummy AI call (replace later)
-    response_text = f"[{key['provider']}] response for: {request_data.query}"
+    # Step 2: Detect file type
+    file_type = file.content_type if file else "text"
 
-    # 🔹 8. Update tokens
-    key["used_tokens"] += tokens_needed
+    # Step 3: Dummy response (EDA phase)
+    response_text = f"Processed query: {query}"
 
-    return AskResponse(
+    # Step 4: Token calculation
+    tokens_used = len(query.split()) * 2
+
+    #  Step 5: Update key usage
+    key.used_tokens += tokens_used
+
+    # Step 6: Save conversation (EDA logs )
+    conversation = Conversation(
+        user_id=current_user,   # auto from JWT
+        query=query,
         response=response_text,
-        provider=key["provider"],
-        source="api",
-        tokens_used=tokens_needed
+        provider=key.provider,
+        tokens_used=tokens_used,
+        file_type=file_type,
+        query_length=len(query.split()),
+        selected_priority=key.priority
+    )
+
+    db.add(conversation)
+    db.commit()
+
+    # Step 7: Return response
+    return AskResponse(
+        answer=response_text,
+        provider=key.provider,
+        tokens_used=tokens_used
     )

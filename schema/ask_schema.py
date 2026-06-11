@@ -1,19 +1,13 @@
 from pydantic import BaseModel, Field
-from typing import Optional
-
+from typing import Optional, List, Literal
 
 class AskRequest(BaseModel):
-    user_id: str = Field(..., min_length=1)
-    query: str = Field(..., min_length=1)
-
-    # file metadata (not actual file)
-    file_name: Optional[str] = None
-    file_type: Optional[str] = None
-    file_size: Optional[int] = None
+    query: str
 
 
+# Response Schema
 class AskResponse(BaseModel):
-    response: str
+    answer: str
     provider: str
-    source: str
     tokens_used: int
+
