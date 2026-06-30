@@ -6,6 +6,17 @@ from core.database import get_db
 from models.user_model import User
 from sqlalchemy.orm import Session
 from service.auth_utils import verify_password, create_access_token
+import secrets
+from datetime import datetime, timedelta, timezone
+
+from schema.password_reset_schema import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse
+)
+
+from models.password_reset_token import PasswordResetToken
+
+from service.email_service import EmailService
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 

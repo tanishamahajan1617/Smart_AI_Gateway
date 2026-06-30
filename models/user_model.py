@@ -36,3 +36,8 @@ class User(Base):
 
     keys = relationship("APIKey", back_populates="user", cascade="all, delete")
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete")
+    sessions = relationship(
+    "Session",
+    back_populates="user",
+    cascade="all, delete-orphan"
+)

@@ -1,13 +1,59 @@
+from typing import Optional
+
 from pydantic import BaseModel, Field
-from typing import Optional, List, Literal
+
+from schema.message_schema import MessageResponse
+
+
+# ======================================================
+# ASK REQUEST
+# ======================================================
+from typing import Optional
+from pydantic import BaseModel, Field
 
 class AskRequest(BaseModel):
-    query: str
+
+    message: str = Field(
+        min_length=1,
+        max_length=100000
+    )
+
+    temperature: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=2.0
+    )
+
+    max_tokens: Optional[int] = Field(
+        default=None,
+        ge=1
+    )
+
+    stream: bool = False
 
 
-# Response Schema
+class Usage(BaseModel):
+
+    prompt_tokens: int
+
+    completion_tokens: int
+
+    total_tokens: int
+
+    total_cost_usd: float
+
 class AskResponse(BaseModel):
-    answer: str
-    provider: str
-    tokens_used: int
 
+    session_id: str
+
+    title: str
+
+    message: MessageResponse
+
+    provider: str
+
+    model: str
+
+    latency_ms: float
+
+    usage: Usage
